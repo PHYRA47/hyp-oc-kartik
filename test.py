@@ -16,9 +16,9 @@ from torch.utils.data import DataLoader
 import torch.distributions
 import config
 from models import hyp_classifier, Vgg_face_dag, load_vgg_face
-from utils import save_checkpoint
+from utils.utils import save_checkpoint
 from dataloader import ROSEYoutu, ReplayAttack, OULU_NPU, CASIA_MFSD, MSU_MFSD
-import statistics
+import statistics # type: ignore
 from loss import TPC_loss_hyp
 
 def test(args):

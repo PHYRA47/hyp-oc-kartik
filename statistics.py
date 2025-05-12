@@ -1,3 +1,4 @@
+# type: ignore
 import json
 import math
 import numpy as np
@@ -8,7 +9,6 @@ import sys
 import shutil
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
-
 
 
 def calculate_accuracy(output, target, topk=(1,)):

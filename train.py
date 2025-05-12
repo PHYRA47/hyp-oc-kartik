@@ -16,11 +16,18 @@ from torch.utils.data import DataLoader
 import torch.distributions
 import config
 from models import hyp_classifier, Vgg_face_dag, load_vgg_face
-from utils import save_checkpoint
+from utils.utils import save_checkpoint
 from dataloader import ROSEYoutu, ReplayAttack, OULU_NPU, CASIA_MFSD, MSU_MFSD
-import statistics
+import statistics # type: ignore
 from loss import TPC_loss_hyp
 
+# Importing the SkinPatchDataset class
+from datasets.SkinPatchDataset import SkinPatchDataset
+
+# Importing the global_contrast_normalization function
+from utils.preprocessing import global_contrast_normalization
+
+import torchvision.transforms as transforms
 
 def train(args):
     #Params and Config
@@ -100,6 +107,33 @@ def train(args):
         valset = OULU_NPU(split="val", csv_root=args.csv_root, data_root=args.data_root)
         train_dataloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size_train, shuffle=True, num_workers=4)
         val_dataloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size_val, shuffle=False, num_workers=4)
+    elif args.dataset == "HSDataset":
+        trainset = SkinPatchDataset(
+            num_subjects=100,
+            patches_per_subject=100,
+            patch_size=32,
+            noise_scale=0.025,
+            applyRandomIllumination=True,
+            isRealSkin=True,
+            transform=transforms.Compose([
+                    transforms.Lambda(lambda x: global_contrast_normalization(x, scale='l1')),
+                    transforms.Normalize([-2.0743157863616943] * 31, [3.0839202404022217 - (-2.0743157863616943)] * 31)
+                ])
+        )
+        train_dataloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size_train, shuffle=True, num_workers=4, pin_memory=True)
+        valset = SkinPatchDataset(
+            num_subjects=100,
+            patches_per_subject=10,
+            patch_size=32,
+            noise_scale=0.025,
+            applyRandomIllumination=True,
+            isRealSkin=True,
+            transform=transforms.Compose([
+                    transforms.Lambda(lambda x: global_contrast_normalization(x, scale='l1')),
+                    transforms.Normalize([-2.0743157863616943] * 31, [3.0839202404022217 - (-2.0743157863616943)] * 31)
+                ])
+        )
+        val_dataloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size_val, shuffle=False, num_workers=4, pin_memory=True)
 
     #Metric Initialization
     best_APCER = 1.0
@@ -157,7 +191,7 @@ def train(args):
             optimizer.zero_grad()
 
             #Feature extraction from VGG
-            images, labels = batch
+            images, labels, *_ = batch # Unpack, ignore global_idx if present and not needed
             images = images.to(device)
             labels = labels.to(device)
             features = vgg_face(images)
