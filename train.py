@@ -19,12 +19,13 @@ from loss import TPC_loss_hyp
 from datasets.SkinPatchDataset import SkinPatchDataset 
 from utils.preprocessing import global_contrast_normalization
 
-import torchvision.transforms as transforms # Keep if SkinPatchDataset uses it
+import torchvision.transforms as transforms 
 
 def train(args):
     #Params and Config
     # Simplify logging paths if dataset is fixed
     dataset_name = "HSDataset" # Hardcode or get from args if you plan to have variants
+    
     if os.path.isdir(os.path.join(args.save_root, dataset_name, args.expt_name)) == False:
         os.makedirs(os.path.join(args.save_root, dataset_name, args.expt_name))
     if os.path.isdir(os.path.join(args.log_root, dataset_name)) == False:
@@ -88,17 +89,16 @@ def train(args):
     # Initialize metrics dictionary
     metrics = {"APCER": best_APCER, "NPCER": best_NPCER, "ACER": best_ACER, "EER": best_EER, "HTER": best_HTER, "ROC_AUC_Score": best_roc_auc, "Threshold": best_threshold, "Accuracy_threshold": best_accuracy_threshold}
 
-
     # Model Initialization
     encoder = HSNet().to(device)
+
     # HSNet has rep_dim = 128, this is our feature_dimension
     args.feature_dimension = encoder.rep_dim # Override or ensure this is passed correctly via config
     print(f"Using HSNet encoder with feature dimension: {args.feature_dimension}")
     
     # Ensure hyp_classifier in models.py accepts feature_dim
-    model = hyp_classifier(feature_dim=args.feature_dimension, c=args.curvature).to(device)
+    model = hyp_classifier(c=args.curvature).to(device)
     
-    start_epoch = 1 # Initialize start_epoch
     if args.resume:
         checkpoint_path = f'{args.save_root}/{dataset_name}/{args.expt_name}/best_epoch.pth'
         if os.path.exists(checkpoint_path):
@@ -140,6 +140,7 @@ def train(args):
     }
 
     # Train Function
+    start_epoch = 1 # Initialize start_epoch
     for num_epoch in range(start_epoch, args.epochs + 1):
         encoder.train()
         model.train()
@@ -162,8 +163,7 @@ def train(args):
 
             images, labels, *_ = batch_data 
             images = images.to(device) 
-            # labels are all 0 for HSDataset, used for creating classifier_ground_truth
-            
+            labels = labels.to(device) # labels are all 0 for HSDataset, used for creating classifier_ground_truth
             features = encoder(images)
 
             # Sample pseudo negative sample
@@ -183,12 +183,13 @@ def train(args):
             tpc_loss = TPC_loss_hyp(classifier_features[:features.size(0)], c=args.curvature)
             classifier_loss = criterion['ce_loss'](classifier_output, classifier_ground_truth)
             
-            loss = classifier_loss + args.lambda_tpc * tpc_loss 
+            loss = classifier_loss + args.lambda_tpc * tpc_loss # lambda_tpc is a hyperparameter for TPC loss
+            # TPC stands
             
             loss.backward()
             # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-            torch.nn.utils.clip_grad_norm_(encoder.parameters(), args.clip_grad_norm)
+
             optimizer.step()
 
             train_loss_sum += loss.item()
@@ -283,3 +284,7 @@ if __name__ == '__main__':
     # If args.dataset is used, ensure it's "HSDataset" or your chosen name.
     
     train(args)
+        
+    print("Parsed arguments:")
+    for arg in vars(args):
+        print(f"{arg}: {getattr(args, arg)}")

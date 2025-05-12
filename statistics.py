@@ -116,7 +116,24 @@ def roc_curve_and_rate(label_list, prob_list):
 def calculate_metrics(labels, predictions):
   EER, threshold, FRR_list, FAR_list = get_EER_states(predictions, labels)
   accuracy_threshold = calculate_threshold(predictions, labels, threshold)
-  roc_auc = roc_auc_score(labels, predictions)
+  
+  roc_auc = 0.0
+  unique_labels = np.unique(labels)
+  if len(unique_labels) < 2:
+    print(f"Warning: Only one class ({unique_labels[0] if len(unique_labels) > 0 else 'None'}) present in y_true. "
+          "ROC AUC score is not defined and will be set to 0.0. "
+          "Other metrics like EER, HTER might also be affected or non-standard.")
+  else:
+    try:
+        roc_auc = roc_auc_score(labels, predictions)
+    except ValueError as e:
+        # This catch is a fallback, the unique_labels check should prevent it.
+        if "Only one class present in y_true" in str(e):
+            print(f"Warning: roc_auc_score raised ValueError: {e}. ROC AUC score is set to 0.0.")
+            # roc_auc is already 0.0
+        else:
+            raise e # Re-raise other ValueErrors
+
   HTER = get_HTER_at_thr(predictions, labels, threshold)
   APCER, NPCER, ACER, ACC = calculate(predictions, labels, threshold)
   return APCER, NPCER, ACER, EER, HTER, roc_auc, threshold, accuracy_threshold

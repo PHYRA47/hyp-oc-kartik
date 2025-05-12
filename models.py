@@ -132,7 +132,7 @@ class hyp_classifier(nn.Module):
     self.last_layer = HyperbolicMLR(128, 2, c)
 
   def forward(self, x):
-    x1 = self.model(x)
+    # x1 = self.model(x)
     x2 = self.topoincare(x) # Skip Sequential network 
     output = self.last_layer(x2)
     return x2, output
