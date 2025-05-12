@@ -133,6 +133,6 @@ class hyp_classifier(nn.Module):
 
   def forward(self, x):
     x1 = self.model(x)
-    x2 = self.topoincare(x1)
+    x2 = self.topoincare(x) # Skip Sequential network 
     output = self.last_layer(x2)
     return x2, output
