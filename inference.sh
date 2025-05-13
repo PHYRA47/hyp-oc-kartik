@@ -22,7 +22,6 @@ echo "Starting training..."
 
 # Run the training script
 python test.py \
-    --expt_name "hypoc_run2_test" \
+    --expt_name "hypoc_inference_50_subjects_20_pps_SL1DB_and_1000_fake_run2" \
     --pretrained_model_path "/home/denegasf/repo/negasa-fromsa-teshome-msc-thesis/src/hyp-oc-kartik/output/run2/weights/HSDataset/hypoc_run2/best_epoch.pth" \
-    --save_root "output/run2/weights" \
-    --log_root "output/run2/test_logs" \
+    --log_root "output/test_logs" \
