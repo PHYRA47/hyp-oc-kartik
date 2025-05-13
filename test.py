@@ -1,5 +1,6 @@
 import argparse
 import os
+import csv
 import numpy as np
 # import cv2 # Not used
 import sys
@@ -22,6 +23,8 @@ from models import hyp_classifier # Vgg_face_dag, load_vgg_face removed
 from networks.HSNet import HSNet # Import HSNet
 # from utils.utils import save_checkpoint # Not used in test
 from datasets.SkinPatchDataset import SkinPatchDataset # Assuming it's in a 'datasets' subfolder
+from datasets.SL1HSDataset import MultiSubjectSL1HSDBDataset
+from datasets.HSDatasetInference import HSDatasetInference
 from utils.preprocessing import global_contrast_normalization # If used by transforms
 import statistics # type: ignore
 # from loss import TPC_loss_hyp # Not used in test
@@ -71,22 +74,23 @@ def test(args):
 
     # Use test-specific arguments for SkinPatchDataset from config.py
     testset = torch.utils.data.ConcatDataset([
-        SkinPatchDataset(
-            num_subjects=100, 
-            patches_per_subject=10,
-            patch_size=32,
-            isRealSkin=True, 
-            applyRandomIllumination=True, 
-            transform=test_transform
-        ),
-        SkinPatchDataset(
-            num_subjects=100, 
-            patches_per_subject=10,
-            patch_size=32,
-            isRealSkin=False, 
-            applyRandomIllumination=True, 
-            transform=test_transform
-        )
+
+        #SkinPatchDataset(
+        #    num_subjects=100, 
+        #    patches_per_subject=10,
+        #    patch_size=32,
+        #    isRealSkin=True, 
+        #    applyRandomIllumination=True, 
+        #    transform=test_transform
+        #),
+        #SkinPatchDataset(
+        #    num_subjects=100, 
+        #    patches_per_subject=10,
+        #    patch_size=32,
+        #    isRealSkin=False, 
+        #    applyRandomIllumination=True, 
+        #    transform=test_transform
+        #),
     ])
     test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
 
@@ -161,6 +165,15 @@ def test(args):
 
         labels_list_np = np.array(labels_list)
         predictions_list_np = np.array(predictions_list)
+
+        # Save predictions to CSV
+        csv_output_path = os.path.join(log_dir, f"{expt_name}_predictions.csv")
+        with open(csv_output_path, 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(['labels', 'predictions']) # Write header
+            for label, pred in zip(labels_list_np, predictions_list_np):
+                csv_writer.writerow([label, pred])
+        print(f"Saved predictions to {csv_output_path}")
 
         # Calculate Metrics
         # The calculate_metrics function expects labels (0 for normal, 1 for attack)
