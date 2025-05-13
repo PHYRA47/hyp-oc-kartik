@@ -22,7 +22,7 @@ echo "Starting training..."
 
 # Run the training script
 python train.py \
-    --expt_name "hypoc_run1" \
+    --expt_name "hypoc_run2" \
     --epochs 10 \
     --batch_size_train 64 \
     --batch_size_val 128 \
