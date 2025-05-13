@@ -5,6 +5,7 @@ import numpy as np
 # import cv2 # Not used
 import sys
 import torch.utils
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 # import argparse # Handled by config.py
 from datetime import datetime
@@ -61,37 +62,11 @@ def test(args):
     device = "cuda:" + args.device
 
     # Dataloaders for HSDataset
-    # Ensure your SkinPatchDataset is configured to output (batch, 31, 32, 32) tensors
-    # Use the same transform logic as in train.py for consistency, or a simplified one for testing
-    test_transform = transforms.Compose([
-        # Add transforms.ToTensor() if SkinPatchDataset outputs PIL Images or numpy arrays
-        # transforms.Lambda(lambda x: global_contrast_normalization(x, scale='l1')), # Verify this works for (C,H,W)
-        # transforms.Normalize(channel_means, channel_stds) # Apply per-channel normalization
-        # Using your provided transform from train.py:
-        transforms.Lambda(lambda x: global_contrast_normalization(x, scale='l1')),
-        transforms.Normalize([-2.0743157863616943] * 31, [(3.0839202404022217 - (-2.0743157863616943))] * 31)
-    ])
 
-    # Use test-specific arguments for SkinPatchDataset from config.py
-    testset = torch.utils.data.ConcatDataset([
+    dataset = HSDatasetInference()
 
-        #SkinPatchDataset(
-        #    num_subjects=100, 
-        #    patches_per_subject=10,
-        #    patch_size=32,
-        #    isRealSkin=True, 
-        #    applyRandomIllumination=True, 
-        #    transform=test_transform
-        #),
-        #SkinPatchDataset(
-        #    num_subjects=100, 
-        #    patches_per_subject=10,
-        #    patch_size=32,
-        #    isRealSkin=False, 
-        #    applyRandomIllumination=True, 
-        #    transform=test_transform
-        #),
-    ])
+    testset = dataset.test_set 
+
     test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
 
 
@@ -145,10 +120,11 @@ def test(args):
         model.eval()
         labels_list = []
         predictions_list = []
+        indices_list = []
         
         test_pbar = tqdm(test_dataloader, leave=True, desc=f"Testing {expt_name}")
         for batch_data in test_pbar:
-            images, labels, *_ = batch_data # Unpack
+            images, labels, global_indices = batch_data # Unpack
             images = images.to(device)
             # labels from HSDataset are all 0 (real skin)
             
@@ -160,19 +136,36 @@ def test(args):
             predictions = F.softmax(classifier_output, dim=1).cpu().numpy()[:, 1]
             
             labels_np = labels.cpu().numpy()
+            global_indices_np = global_indices.cpu().numpy()
+
             labels_list.extend(labels_np)
             predictions_list.extend(predictions)
+            indices_list.extend(global_indices_np)
 
         labels_list_np = np.array(labels_list)
         predictions_list_np = np.array(predictions_list)
+        indices_list_np = np.array(indices_list)
+
+        # Generate a strip plot for predictions
+        plt.figure(figsize=(10, 6))
+        plt.scatter(labels_list_np, predictions_list_np, alpha=0.6, label="Predictions")
+        # plt.axhline(y=0.5, color='r', linestyle='--', label="Threshold (0.5)")
+        plt.xlabel("Class (0=Real Skin, 1=Fake Skin)")
+        plt.ylabel("Prediction Score")
+        plt.title(f"Strip Plot of Predictions for {expt_name}")
+        plt.grid(True)
+        strip_plot_path = os.path.join(log_dir, f"{expt_name}_strip_plot.png")
+        plt.savefig(strip_plot_path)
+        plt.close()
+        print(f"Saved strip plot to {strip_plot_path}")
 
         # Save predictions to CSV
         csv_output_path = os.path.join(log_dir, f"{expt_name}_predictions.csv")
         with open(csv_output_path, 'w', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(['labels', 'predictions']) # Write header
-            for label, pred in zip(labels_list_np, predictions_list_np):
-                csv_writer.writerow([label, pred])
+            csv_writer.writerow(['index', 'labels', 'predictions']) # Write header
+            for idx, label, pred in zip(indices_list_np, labels_list_np, predictions_list_np):
+                csv_writer.writerow([idx, label, pred])
         print(f"Saved predictions to {csv_output_path}")
 
         # Calculate Metrics
