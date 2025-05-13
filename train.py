@@ -61,20 +61,29 @@ def train(args):
         patches_per_subject=100,
         patch_size=PATCH_SIZE,
         isRealSkin=True, 
-        applyRandomIllumination=True, 
+        applyRandomIllumination=False, 
         transform=transform
     )
     train_dataloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size_train, shuffle=True, num_workers=4, pin_memory=True)
     
-    valset = SkinPatchDataset(
-        num_subjects=100,
-        patches_per_subject=10,
-        patch_size=PATCH_SIZE,
-        isRealSkin=True,
-        noise_scale=NOISE_SCALE,
-        applyRandomIllumination=False, 
-        transform=transform
-    )
+    valset = torch.utils.data.ConcatDataset([
+        SkinPatchDataset(
+            num_subjects=100,
+            patches_per_subject=10,
+            patch_size=PATCH_SIZE,
+            isRealSkin=True, 
+            applyRandomIllumination=False, 
+            transform=transform
+        ),
+        SkinPatchDataset(
+            num_subjects=100,
+            patches_per_subject=10,
+            patch_size=PATCH_SIZE,
+            isRealSkin=False, 
+            applyRandomIllumination=False, 
+            transform=transform
+        )
+    ])
     val_dataloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size_val, shuffle=False, num_workers=4, pin_memory=True)
 
     #Metric Initialization
