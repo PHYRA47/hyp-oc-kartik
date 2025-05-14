@@ -1,6 +1,6 @@
 #!/bin/bash
  
-#SBATCH --job-name=hypoc_training
+#SBATCH --job-name=hypoc_inference
 #SBATCH --partition=student,shared,sharedp
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks-per-node=1
@@ -22,6 +22,6 @@ echo "Starting training..."
 
 # Run the training script
 python test.py \
-    --expt_name "hypoc_inference_50_subjects_20_pps_SL1DB_and_1000_fake_run2" \
-    --pretrained_model_path "/home/denegasf/repo/negasa-fromsa-teshome-msc-thesis/src/hyp-oc-kartik/output/run2/weights/HSDataset/hypoc_run2/best_epoch.pth" \
-    --log_root "output/test_logs" \
+    --expt_name "hypoc_inference_SL1DB_50sub2pps_SkinPatch_100f_withillum" \
+    --pretrained_model_path "output/hypoc_trained_on_SkinPatch_100r100f_noIllum/weights/HSDataset/hypoc_run3_SkinPatch_100_sub_10_pps/best_epoch.pth" \
+    --log_root "output/hypoc_trained_on_SkinPatch_100r100f_noIllum/test_logs" 

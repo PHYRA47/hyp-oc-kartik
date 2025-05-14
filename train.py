@@ -58,7 +58,7 @@ def train(args):
     
     trainset = SkinPatchDataset(
         num_subjects=100,
-        patches_per_subject=100,
+        patches_per_subject=10,
         patch_size=PATCH_SIZE,
         isRealSkin=True, 
         applyRandomIllumination=False, 
@@ -69,7 +69,7 @@ def train(args):
     valset = torch.utils.data.ConcatDataset([
         SkinPatchDataset(
             num_subjects=100,
-            patches_per_subject=10,
+            patches_per_subject=1,
             patch_size=PATCH_SIZE,
             isRealSkin=True, 
             applyRandomIllumination=False, 
@@ -77,7 +77,7 @@ def train(args):
         ),
         SkinPatchDataset(
             num_subjects=100,
-            patches_per_subject=10,
+            patches_per_subject=1,
             patch_size=PATCH_SIZE,
             isRealSkin=False, 
             applyRandomIllumination=False, 

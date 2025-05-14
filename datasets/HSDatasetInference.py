@@ -55,15 +55,15 @@ class HSDatasetInference(TorchvisionDataset):
 
         part_1 = MultiSubjectSL1HSDBDataset(
             num_subjects=50,
-            patches_per_file=20,
-            patch_size=32,
-            transform=transform
+            patches_per_file= 2, # num_real_patches // num_subjects,
+            patch_size=patch_size,
+            transform=transform,
         )
     
         # Fake patches for the test set
         part_2 = SkinPatchDataset(
             num_subjects=100,
-            patches_per_subject= 10, 
+            patches_per_subject= 1, 
             patch_size=patch_size,
             noise_scale=noise_scale,
             isRealSkin=False,  # Fake patches
