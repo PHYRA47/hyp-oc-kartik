@@ -1,170 +1,214 @@
-import os
-import numpy as np
-import cv2
-import sys
-from tqdm import tqdm
 import argparse
+import os
+import csv
+import numpy as np
+# import cv2 # Not used
+import sys
+import torch.utils
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+# import argparse # Handled by config.py
 from datetime import datetime
-import time
+# import time # Not explicitly used
 import torch
-import torchvision
+import torchvision.transforms as transforms # Keep if SkinPatchDataset uses it
 import torch.nn.functional as F
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim import lr_scheduler
+# import torch.nn as nn # Not directly used for model definition here, but F is
+# import torch.optim as optim # Not used in test
+# from torch.optim import lr_scheduler # Not used in test
 from torch.utils.data import DataLoader
-import torch.distributions
-import config
-from models import hyp_classifier, Vgg_face_dag, load_vgg_face
-from utils.utils import save_checkpoint
-from dataloader import ROSEYoutu, ReplayAttack, OULU_NPU, CASIA_MFSD, MSU_MFSD
+# import torch.distributions # Not used in test
+
+import config # Use the same config as train.py
+from models import hyp_classifier # Vgg_face_dag, load_vgg_face removed
+from networks.HSNet import HSNet # Import HSNet
+# from utils.utils import save_checkpoint # Not used in test
+from datasets.SkinPatchDataset import SkinPatchDataset # Assuming it's in a 'datasets' subfolder
+from datasets.SL1HSDataset import MultiSubjectSL1HSDBDataset
+from datasets.HSDatasetInference import HSDatasetInference
+from utils.preprocessing import global_contrast_normalization # If used by transforms
 import statistics # type: ignore
-from loss import TPC_loss_hyp
+# from loss import TPC_loss_hyp # Not used in test
 
 def test(args):
-    #Params and Config
-    name = "-".join(args.list)
-    file = open(f"{args.log_root}/{args.source_dataset}/{name}_{args.target_dataset}_test.txt", "a")
-    sys.stdout = file
+    # Params and Config
+    dataset_name = args.dataset # Should be "HSDataset" from config
+    expt_name = args.expt_name
+
+    # Ensure log directory exists
+    log_dir = os.path.join(args.log_root, dataset_name)
+    if not os.path.isdir(log_dir):
+        os.makedirs(log_dir)
+    
+    log_file_path = f"{log_dir}/{expt_name}_test.txt"
+    
+    # Redirect stdout to log file
+    # Check if file is already open (e.g. if called multiple times in a session)
+    original_stdout = sys.stdout
+    if hasattr(sys.stdout, 'name') and sys.stdout.name == log_file_path:
+        pass # Already logging to the correct file
+    else:
+        if hasattr(sys.stdout, 'close') and sys.stdout is not sys.__stdout__:
+            sys.stdout.close()
+        file_handle = open(log_file_path, "a")
+        sys.stdout = file_handle
+    
     print("---"*30)
-    for arg in vars(args):
-        num_space = 25 - len(arg)
-        print(arg + " " * num_space + str(getattr(args, arg)))
+    print(f"Starting testing for experiment: {expt_name} on dataset: {dataset_name}")
+    for arg_name in vars(args):
+        num_space = 25 - len(arg_name)
+        print(arg_name + " " * num_space + str(getattr(args, arg_name)))
     print("---"*30)
     device = "cuda:" + args.device
 
-    #Dataloaders
-    if args.target_dataset == "ROSEYoutu":
-        testset = ROSEYoutu(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "ReplayAttack":
-        testset = ReplayAttack(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "OULU_NPU":
-        testset = OULU_NPU(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "CASIA_MFSD":
-        testset = CASIA_MFSD(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "MSU_MFSD":
-        testset = MSU_MFSD(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "ROSEYoutu":
-        testset = ROSEYoutu(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "OCI":
-        testset = MSU_MFSD(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "OMI":
-        testset = CASIA_MFSD(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "OCM":
-        testset = ReplayAttack(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
-    elif args.target_dataset == "ICM":
-        testset = OULU_NPU(split="test", csv_root=args.csv_root, data_root=args.data_root)
-        test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
+    # Dataloaders for HSDataset
 
-    #Metric Initialization
-    best_APCER = 1.0
-    best_NPCER = 1.0
-    best_ACER = 1.0
-    best_EER = 1.0
-    best_HTER = 1.0
-    best_roc_auc = 0.0
-    best_threshold = 0.0
-    best_accuracy_threshold = 0.0
-    metrics = {"APCER": 0, "NPCER":0, "ACER": 0, "EER": 0, "HTER": 0, "ROC_AUC_Score": 0, "Threshold": 0, "Accuracy_threshold": 0} 
+    dataset = HSDatasetInference()
 
-    #Model Initialization
-    vgg_face = load_vgg_face(device=device, weights_path=f"{args.pretrained_model_path}", return_layer='fc6')
+    testset = dataset.test_set 
+
+    test_dataloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size_test, shuffle=False, num_workers=4)
+
+
+    # Model Initialization
+    encoder = HSNet().to(device)
+    # HSNet has rep_dim = 128, this is our feature_dimension
+    # args.feature_dimension should be set from config (default 128)
+    print(f"Using HSNet encoder with feature dimension: {encoder.rep_dim}")
+    
     model = hyp_classifier(c=args.curvature).to(device)
-    APCER_lis = []
-    NPCER_lis = []
-    AUC_lis = []
-    HTER_lis = []
-    for expt in args.list:
-        filename = f"{args.save_root}/{args.source_dataset}/{expt}/best_epoch.pth"
-        checkpoint = torch.load(filename, map_location=device)
-        vgg_face.load_state_dict(checkpoint["encoder_state_dict"])
-        model.load_state_dict(checkpoint["classifier_state_dict"])
-
-        with torch.no_grad():
-            vgg_face.eval()
-            model.eval()
-            labels_list = []
-            predictions_list = []
-            test_pbar = tqdm(test_dataloader, leave=True)
-            for batch in test_pbar:
-                #Feature extraction from VGG
-                images, labels = batch
-                images = images.to(device)
-                labels = labels.to(device)
-                features = vgg_face(images)
-                classifier_features, classifier_output = model(features)
-
-                #Predictions and Labels
-                predictions = F.softmax(classifier_output, dim=1).cpu().numpy()[:, 1]
-                labels = labels.cpu().numpy()
-                labels_list.extend(labels)
-                predictions_list.extend(predictions)
-
-
-            labels_list = np.array(labels_list)
-            predictions_list = np.array(predictions_list)
-
-            #Calculate Metrics
-            APCER, NPCER, ACER, EER, HTER, roc_auc, threshold, accuracy_threshold = statistics.calculate_metrics(labels_list, predictions_list)
-            metrics["APCER"], metrics["NPCER"], metrics["ACER"], metrics["EER"], metrics["HTER"], metrics["ROC_AUC_Score"], metrics["Threshold"], metrics["Accuracy_threshold"] = APCER, NPCER, ACER, EER, HTER, roc_auc, threshold, accuracy_threshold
-            APCER_lis.append(metrics["APCER"]*100)
-            NPCER_lis.append(metrics["NPCER"]*100)
-            HTER_lis.append(metrics["HTER"]*100)
-            AUC_lis.append(metrics["ROC_AUC_Score"])
-            #Print results
-            print(f"\n##### TEST SET RESULTS  {expt} #####")
-            print("APCER: ", metrics["APCER"]*100)
-            print("NPCER: ", metrics["NPCER"]*100) 
-            print("ACER: ", metrics["ACER"]*100)
-            print("HTER: ", metrics["HTER"]*100)
-            print("ROC_AUC_Score: ", metrics["ROC_AUC_Score"])
-            print(f"Accuracy@{metrics['Threshold']}: ", metrics["Accuracy_threshold"]*100.0)
-
-    APCER_lis = np.array(APCER_lis)
-    NPCER_lis = np.array(NPCER_lis)
-    AUC_lis = np.array(AUC_lis)
-    HTER_lis = np.array(HTER_lis)
     
-    print("\n\n")
-    print("### Top 3 ###")
-    print("APCER: ", np.mean(APCER_lis[np.argsort(APCER_lis)[:3]]), np.std(APCER_lis[np.argsort(APCER_lis)[:3]]))
-    print("NPCER: ", np.mean(NPCER_lis[np.argsort(NPCER_lis)[:3]]), np.std(NPCER_lis[np.argsort(NPCER_lis)[:3]]))
-    print("HTER: ", np.mean(HTER_lis[np.argsort(HTER_lis)[:3]]), np.std(HTER_lis[np.argsort(HTER_lis)[:3]]))
-    print("AUC: ", np.mean(AUC_lis[np.argsort(AUC_lis)[-3:]]), np.std(AUC_lis[np.argsort(AUC_lis)[-3:]]))
-    
-    print("\n")
-    print("### Top 5 ###")
-    print("APCER: ", np.mean(APCER_lis), np.std(APCER_lis))
-    print("NPCER: ", np.mean(NPCER_lis), np.std(NPCER_lis))
-    print("HTER: ", np.mean(HTER_lis), np.std(HTER_lis))
-    print("AUC: ", np.mean(AUC_lis), np.std(AUC_lis))
+    # Load checkpoint
+    checkpoint_filename = None
+    if args.pretrained_model_path:
+        if os.path.exists(args.pretrained_model_path):
+            checkpoint_filename = args.pretrained_model_path
+            print(f"Attempting to load manually specified checkpoint: {checkpoint_filename}")
+        else:
+            print(f"ERROR: Manually specified checkpoint file not found at {args.pretrained_model_path}")
+            if sys.stdout is not original_stdout:
+                sys.stdout.close()
+            sys.stdout = original_stdout # Reset stdout
+            return
+    else:
+        # The checkpoint path should correspond to the model trained by train.py
+        constructed_checkpoint_filename = f"{args.save_root}/{dataset_name}/{expt_name}/best_epoch.pth" # Or last_epoch.pth
+        if os.path.exists(constructed_checkpoint_filename):
+            checkpoint_filename = constructed_checkpoint_filename
+            print(f"Attempting to load checkpoint based on experiment name: {checkpoint_filename}")
+        else:
+            # Fallback to try last_epoch.pth if best_epoch.pth is not found
+            constructed_checkpoint_filename = f"{args.save_root}/{dataset_name}/{expt_name}/last_epoch.pth"
+            if os.path.exists(constructed_checkpoint_filename):
+                checkpoint_filename = constructed_checkpoint_filename
+                print(f"Attempting to load checkpoint based on experiment name (last_epoch): {checkpoint_filename}")
 
+
+    if not checkpoint_filename or not os.path.exists(checkpoint_filename):
+        print(f"ERROR: Checkpoint file not found.")
+        print(f"  Tried manual path: {args.pretrained_model_path if args.pretrained_model_path else 'Not provided'}")
+        print(f"  Tried constructed path: {args.save_root}/{dataset_name}/{expt_name}/best_epoch.pth (and last_epoch.pth)")
+        if sys.stdout is not original_stdout:
+            sys.stdout.close()
+        sys.stdout = original_stdout # Reset stdout
+        return
+
+    print(f"Loading checkpoint from: {checkpoint_filename}")
+    
+    with torch.no_grad():
+        encoder.eval()
+        model.eval()
+        labels_list = []
+        predictions_list = []
+        indices_list = []
         
-    sys.stdout = sys.__stdout__
-    file.close()
+        test_pbar = tqdm(test_dataloader, leave=True, desc=f"Testing {expt_name}")
+        for batch_data in test_pbar:
+            images, labels, global_indices = batch_data # Unpack
+            images = images.to(device)
+            # labels from HSDataset are all 0 (real skin)
+            
+            features = encoder(images)
+            # For testing, we only need the classifier's output, not intermediate features usually
+            _, classifier_output = model(features) # classifier_features might not be needed
+
+            # Predictions: Softmax output, index 1 is the score for the "pseudo-negative" class (anomaly score)
+            predictions = F.softmax(classifier_output, dim=1).cpu().numpy()[:, 1]
+            
+            labels_np = labels.cpu().numpy()
+            global_indices_np = global_indices.cpu().numpy()
+
+            labels_list.extend(labels_np)
+            predictions_list.extend(predictions)
+            indices_list.extend(global_indices_np)
+
+        labels_list_np = np.array(labels_list)
+        predictions_list_np = np.array(predictions_list)
+        indices_list_np = np.array(indices_list)
+
+        # Generate a strip plot for predictions
+        plt.figure(figsize=(10, 6))
+        plt.scatter(labels_list_np, predictions_list_np, alpha=0.6, label="Predictions")
+        # plt.axhline(y=0.5, color='r', linestyle='--', label="Threshold (0.5)")
+        plt.xlabel("Class (0=Real Skin, 1=Fake Skin)")
+        plt.ylabel("Prediction Score")
+        plt.title(f"Strip Plot of Predictions for {expt_name}")
+        plt.grid(True)
+        strip_plot_path = os.path.join(log_dir, f"{expt_name}_strip_plot.png")
+        plt.savefig(strip_plot_path)
+        plt.close()
+        print(f"Saved strip plot to {strip_plot_path}")
+
+        # Save predictions to CSV
+        csv_output_path = os.path.join(log_dir, f"{expt_name}_predictions.csv")
+        with open(csv_output_path, 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(['index', 'labels', 'predictions']) # Write header
+            for idx, label, pred in zip(indices_list_np, labels_list_np, predictions_list_np):
+                csv_writer.writerow([idx, label, pred])
+        print(f"Saved predictions to {csv_output_path}")
+
+        # Calculate Metrics
+        # The calculate_metrics function expects labels (0 for normal, 1 for attack)
+        # and predictions (scores for attack class).
+        # Since your test labels_list is all 0s (real skin), it will primarily calculate NPCER.
+        APCER, NPCER, ACER, EER, HTER, roc_auc, threshold, accuracy_threshold = statistics.calculate_metrics(labels_list_np, predictions_list_np)
+        
+        metrics = {
+            "APCER": APCER, "NPCER": NPCER, "ACER": ACER, 
+            "EER": EER, "HTER": HTER, "ROC_AUC_Score": roc_auc, 
+            "Threshold": threshold, "Accuracy_threshold": accuracy_threshold
+        }
+
+        # Print results
+        print(f"\n##### TEST SET RESULTS for {expt_name} #####")
+        print(f"APCER: {metrics['APCER']*100:.2f}%") # Will be 0 or NaN if no attack samples in test
+        print(f"NPCER: {metrics['NPCER']*100:.2f}%") 
+        print(f"ACER:  {metrics['ACER']*100:.2f}%")
+        print(f"HTER:  {metrics['HTER']*100:.2f}%") # HTER = (APCER + NPCER) / 2
+        print(f"EER: {metrics['EER']*100:.2f}%")
+        print(f"ROC_AUC_Score: {metrics['ROC_AUC_Score']:.4f}")
+        print(f"Optimal Threshold for EER/HTER: {metrics['Threshold']:.4f}")
+        print(f"Accuracy at Optimal Threshold: {metrics['Accuracy_threshold']*100.0:.2f}%")
+        print("--- --- ---")
+        
+    if sys.stdout is not original_stdout: # Close the log file if it was opened
+        sys.stdout.close()
+        sys.stdout = original_stdout # Reset stdout to console
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--pretrained_model_path', type=str, help="Datasets are stored in this directory", default="/mnt/store/knaraya4/hyp-oc/pretrained_weights/vgg_face_dag.pth")
-    parser.add_argument('--data_root', type=str, help="Datasets are stored in this directory", default="/mnt/store/knaraya4/data")
-    parser.add_argument('--csv_root', type=str, help="Data csv files are stored here", default="/mnt/store/knaraya4/hyp-oc/data")
-    parser.add_argument('--save_root', type=str, help="Weights are saved here", default="/mnt/store/knaraya4/hyp-oc/weights")
-    parser.add_argument('--log_root', type=str, help="Training logs are saved here", default="/mnt/store/knaraya4/hyp-oc/results")
-    parser.add_argument('--source_dataset', type=str, help="ROSEYoutu" or "ReplayAttack" or "OULU_NPU" or "CASIA_MFSD" or "MSU_MFSD" or "OCI" or "OMI" or "OCM" or "ICM")
-    parser.add_argument('--target_dataset', type=str, help="ROSEYoutu" or "ReplayAttack" or "OULU_NPU" or "CASIA_MFSD" or "MSU_MFSD" or "OCI" or "OMI" or "OCM" or "ICM")
-    parser.add_argument('--device', type=str, default="0", help="0" or "1" or "2")
-    parser.add_argument('--batch_size_test', type=int, default=32)
-    parser.add_argument('--curvature', type=float, default=0.1, help="Curvature of the hyperbolic ball")
-    parser.add_argument('--list', type=str, default='run_1,run_2,run_3,run_4,run_5', help="The name of the experiments")
+    
+    parser = argparse.ArgumentParser(description="Hyp-OC Testing")
+    
+    parser.add_argument('--pretrained_model_path', type=str, help="Path to pretrained VGG model (unused by HSNet)", default=None) # Will be parsed but not used by HSNet logic
+
+    parser.add_argument('--expt_name', type=str, help="Experiment name for logging", default="test_experiment")
+    parser.add_argument('--save_root', type=str, default="./output/weights", help="Root directory where trained weights are saved")
+    parser.add_argument('--log_root', type=str, default="./output/results", help="Root directory where test logs will be saved")
+    parser.add_argument('--dataset', type=str, default="HSDataset", help="Dataset name (used for path organization, fixed to HSDataset functionality)")
+    parser.add_argument('--device', type=str, default="0", help="CUDA device ID (e.g., '0', '1')")
+    parser.add_argument('--batch_size_test', type=int, default=32, help="Batch size for testing")
+    parser.add_argument('--curvature', type=float, default=1.0, help="Curvature of the hyperbolic ball (c > 0)")
+    
     args = parser.parse_args()
-    args.list = [str(x) for x in args.list.split(',')]
     test(args)

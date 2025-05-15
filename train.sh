@@ -22,7 +22,9 @@ echo "Starting training..."
 
 # Run the training script
 python train.py \
-    --expt_name "hypoc_run2" \
+    --expt_name "hypoc_SkinPatch_100r100f_run3" \
+    --save_root "output/run3/weights" \
+    --log_root "output/run3/logs" \
     --epochs 10 \
-    --batch_size_train 64 \
-    --batch_size_val 128 \
+    --batch_size_train 32 \
+    --batch_size_val 32 \
