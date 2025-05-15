@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *output/
+**/temp.ipynb
+**/script.ipynb
 
 # C extensions
 *.so
